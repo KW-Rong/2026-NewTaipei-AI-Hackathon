@@ -1,0 +1,59 @@
+{
+  "run_id": "youbike-20260912-122927",
+  "aws": {
+    "profile": "hackathon-team3",
+    "region": "us-west-2",
+    "bucket": "sagemaker-ntpc-youbike-078135745361-us-west-2",
+    "execution_role_arn": "arn:aws:iam::078135745361:role/youbike-sagemaker-exec-role"
+  },
+  "s3": {
+    "raw_train_prefix": "youbike-xgboost/raw/train/",
+    "raw_validation_prefix": "youbike-xgboost/raw/validation/",
+    "raw_test_prefix": "youbike-xgboost/raw/test/",
+    "run_root": "youbike-xgboost/runs/youbike-20260912-122927/",
+    "processed_prefix": "youbike-xgboost/runs/youbike-20260912-122927/processed/",
+    "code_prefix": "youbike-xgboost/runs/youbike-20260912-122927/code/",
+    "models_prefix": "youbike-xgboost/runs/youbike-20260912-122927/models/",
+    "eval_prefix": "youbike-xgboost/runs/youbike-20260912-122927/eval/"
+  },
+  "compute": {
+    "processing_instance_type": "ml.m5.4xlarge",
+    "processing_instance_count": 1,
+    "processing_volume_gb": 50,
+    "training_instance_type": "ml.m5.xlarge",
+    "training_instance_count": 1,
+    "training_volume_gb": 50,
+    "xgboost_framework_version": "1.7-1"
+  },
+  "targets": {
+    "bike-30": {"kind": "bike", "horizon_min": 30, "label_col": "label_bike_30"},
+    "dock-30": {"kind": "dock", "horizon_min": 30, "label_col": "label_dock_30"},
+    "bike-60": {"kind": "bike", "horizon_min": 60, "label_col": "label_bike_60"},
+    "dock-60": {"kind": "dock", "horizon_min": 60, "label_col": "label_dock_60"}
+  },
+  "hyperparameters": {
+    "objective": "reg:squarederror",
+    "eval_metric": "rmse",
+    "tree_method": "hist",
+    "num_round": 1200,
+    "eta": 0.045,
+    "max_depth": 8,
+    "min_child_weight": 8,
+    "subsample": 0.82,
+    "colsample_bytree": 0.82,
+    "alpha": 0.05,
+    "lambda": 2,
+    "max_bin": 192,
+    "early_stopping_rounds": 60,
+    "seed": 42
+  },
+  "label_rules": {
+    "low_ratio_threshold": 0.10,
+    "low_ratio_sample_weight": 3,
+    "default_sample_weight": 1
+  },
+  "clusters": ["平穩低波動型", "均衡流動型", "雙尖峰高流動型", "通勤到達型"],
+  "unknown_cluster": "未知或新場站",
+  "station_types": ["捷運站", "公車站", "學校", "公園", "醫院", "商圈", "停車場"],
+  "threshold_search": {"low": 0.030, "high": 0.200, "step": 0.005, "target_ratio": 0.10}
+}

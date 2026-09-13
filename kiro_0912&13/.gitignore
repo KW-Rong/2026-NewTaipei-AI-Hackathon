@@ -1,0 +1,26 @@
+# Python virtual environment
+.venv/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# AWS credentials
+.aws/
+credentials
+credentials.*
+
+# Keys and secrets
+*.pem
+*.key
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log

@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-100 text-slate-800">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新北市 YouBike 2.0 智慧調度與 AI 預測監理平台 (新北交通局 2026 監理版)</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        gov: {
+                            800: '#0f172a',
+                            900: '#020617'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet JS & CSS for GIS Interactive Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet MarkerCluster CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- Chart.js for Predictive Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="appData.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f1f5f9;
+        }
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        #map, #map-hotspots, #map-trucks {
+            width: 100%;
+            height: 100%;
+            min-height: 420px;
+            border-radius: 0.75rem;
+            z-index: 10;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.9; }
+            50% { transform: scale(1.35); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.9; }
+        }
+        .marker-alert-empty {
+            border: 2.5px solid #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+        .marker-alert-full {
+            border: 2.5px solid #f59e0b;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.7);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large { background: rgba(37, 99, 235, 0.24) !important; }
+        .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div { background: #2563eb !important; color: white !important; }
+    </style>
+</head>
+<body class="min-h-full flex bg-slate-100 text-slate-800">
+
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 min-h-screen border-r border-slate-800 sticky top-0 h-screen z-40">
+        <!-- Logo Header -->
+        <div class="p-5 border-b border-slate-800/80 flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/30">
+                <i class="fa-solid fa-bicycle"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-white tracking-wide text-base">UBIKE預測平台</h1>
+                <p class="text-[11px] text-slate-400">新北市公共自行車智慧監理</p>
+            </div>
+        </div>
+
+        <!-- Navigation Menu Links -->
+        <nav class="flex-1 p-4 space-y-1 text-xs overflow-y-auto">
+            <div class="text-[10px] font-semibold text-slate-500 tracking-wider uppercase px-3 mb-2">市府監理戰情中心</div>
+            
+            <button onclick="switchTab('overview')" id="nav-overview" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold shadow-md transition">
+                <i class="fa-solid fa-chart-pie w-4"></i>
+                <span>營運總覽與供需預測</span>
+            </button>
+
+            <button onclick="switchTab('patterns')" id="nav-patterns" class="w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-chart-simple w-4 text-cyan-400"></i>
+                    <span>站點供需型態分析</span>
+                </div>
+                <span id="sidebar-station-count" class="px-1.5 py-0.5 rounded text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">載入中</span>
+            </button>
+            
+            <button onclick="switchTab('foolproof')" id="nav-foolproof" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <i class="fa-solid fa-shield-halved w-4"></i>
+                <span>調度安全檢核</span>
+                <span class="ml-auto px-1.5 py-0.5 rounded text-[9px] bg-slate-500/20 text-slate-300 border border-slate-500/30 font-bold">規則草案</span>
+            </button>
+
+            <button onclick="switchTab('relay')" id="nav-relay" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <i class="fa-solid fa-hand-holding-heart w-4 text-emerald-400"></i>
+                <span>友愛接力任務管理</span>
+                <span class="ml-auto px-1.5 py-0.5 rounded text-[9px] bg-slate-500/20 text-slate-300 border border-slate-500/30 font-bold">待串 API</span>
+            </button>
+
+            <button onclick="switchTab('trucks')" id="nav-trucks" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <i class="fa-solid fa-truck-ramp-box w-4 text-blue-400"></i>
+                <span>調度車路線規劃</span>
+            </button>
+
+            <button onclick="switchTab('faults')" id="nav-faults" class="w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-clipboard-list w-4 text-amber-400"></i>
+                    <span>調度日誌</span>
+                </div>
+                <span id="sidebar-log-count" class="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold">0</span>
+            </button>
+
+            <div class="text-[10px] font-semibold text-slate-500 tracking-wider uppercase px-3 pt-4 mb-2">市府稽核與告警</div>
+
+            <button onclick="switchTab('alerts')" id="nav-alerts" class="w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-triangle-exclamation w-4 text-red-400"></i>
+                    <span>缺車/滿站風險告警</span>
+                </div>
+                <span id="sidebar-alert-count" class="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 font-bold">14</span>
+            </button>
+        </nav>
+
+        <!-- System Status Footer -->
+        <div class="p-4 m-3 bg-slate-800/80 rounded-xl border border-slate-700/60 space-y-2">
+            <div class="flex items-center justify-between text-xs font-semibold text-emerald-400">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>模型回放資料已載入</span>
+                </div>
+                <span id="sidebar-observation-count" class="text-[10px] text-slate-400">載入中</span>
+            </div>
+            <div class="text-[10px] text-slate-400 border-t border-slate-700/50 pt-2 space-y-1">
+                <div class="flex justify-between">
+                    <span>資料模式：</span>
+                    <span id="sidebar-mode" class="text-amber-400 font-bold">歷史回放</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>模型版本：</span>
+                    <span id="sidebar-model-version" class="text-cyan-400 font-bold">載入中</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>警示：</span>
+                    <span class="text-cyan-400 font-bold">預測比例 vs 校正門檻</span>
+                </div>
+                <div id="data-source-note" class="text-[9px] text-slate-500 leading-relaxed pt-1"></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right Main Workspace Container -->
+    <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+
+        <!-- Top Header Bar -->
+        <header class="bg-white border-b border-slate-200 px-8 py-4 shadow-sm sticky top-0 z-30">
+            <div class="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                    <span class="font-bold text-slate-800">新北市政府交通局</span>
+                    <span>/</span>
+                    <span>智慧交通營運監理中心</span>
+                    <span>/</span>
+                    <span class="text-blue-600 font-bold" id="page-title-breadcrumb">營運總覽與供需預測</span>
+            </div>
+            <div class="text-xs text-slate-400 mt-1">
+                資料週期：<span id="header-data-period" class="font-bold">載入中</span>
+                <span class="mx-2">•</span>
+                來源：<span id="header-model-source" class="font-semibold text-slate-600">載入中</span>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-4 mt-4">
+                <!-- Header Pattern Filter -->
+                <div id="page-pattern-filter" class="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs">
+                    <span class="font-bold text-slate-500 px-2 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-shapes text-blue-600"></i>
+                        <span>供需形態篩選：</span>
+                    </span>
+                    <select id="header-pattern-select" onchange="filterByKMeansPattern(this.value)" class="min-w-[330px] bg-white border-2 border-blue-500 text-slate-800 text-sm rounded-xl px-4 py-2 focus:outline-none font-bold">
+                        <option value="ALL">載入模型分群中</option>
+                    </select>
+                </div>
+
+                <!-- Header Right Action Area -->
+                <div class="flex items-center space-x-3">
+                    <div class="relative">
+                        <button onclick="switchTab('alerts')" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition">
+                            <i class="fa-regular fa-bell text-sm"></i>
+                        </button>
+                        <span id="header-alert-badge" class="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-white">14</span>
+                    </div>
+
+                    <button onclick="exportDailyReport()" class="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-md shadow-blue-500/20 flex items-center space-x-2">
+                        <i class="fa-solid fa-file-export"></i>
+                        <span>匯出市府監理日報</span>
+                    </button>
+
+                    <div class="flex items-center space-x-3 border-l pl-4 border-slate-200">
+                        <div class="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shadow">
+                            <i class="fa-solid fa-landmark"></i>
+                        </div>
+                        <div class="text-xs">
+                            <div class="font-bold text-slate-800">交通局 綜合規劃科</div>
+                            <div class="text-[10px] text-emerald-600 font-semibold">● 監理席在線</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Workspace Body -->
+        <main class="p-8 space-y-6 max-w-[1600px] mx-auto w-full">
+
+            <!-- TAB 1: 營運總覽與預測 (Overview) -->
+            <div id="tab-overview" class="tab-content active space-y-6">
+
+                <!-- KPI Metric Cards Row (4 Cards - 刪除友愛接力卡片) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between text-xs text-slate-500 font-medium">
+                            <span>全區租賃站總數</span>
+                            <i class="fa-solid fa-layer-group text-blue-500"></i>
+                        </div>
+                        <div id="kpi-station-count" class="text-2xl font-black text-slate-900 mt-2 font-mono">— <span class="text-xs font-normal text-slate-500">站</span></div>
+                        <div class="mt-2 text-[11px] text-blue-600 font-semibold flex items-center space-x-1">
+                            <i class="fa-solid fa-circle-check"></i>
+                            <span id="kpi-district-count">依本資料集涵蓋行政區計算</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between text-xs text-slate-500 font-medium">
+                            <span>未來預警｜即將缺車站</span>
+                            <i class="fa-solid fa-arrow-trend-up text-red-500"></i>
+                        </div>
+                        <div id="kpi-empty-count" class="text-2xl font-black text-slate-900 mt-2 font-mono">— <span class="text-xs font-normal text-slate-500">站</span></div>
+                        <div class="mt-2 text-[11px] text-red-500 font-semibold flex items-center space-x-1">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span id="kpi-empty-sub">模型未來預警（非目前事件）</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between text-xs text-slate-500 font-medium">
+                            <span>未來預警｜即將滿站站</span>
+                            <i class="fa-solid fa-arrow-trend-down text-amber-500"></i>
+                        </div>
+                        <div id="kpi-full-count" class="text-2xl font-black text-slate-900 mt-2 font-mono">— <span class="text-xs font-normal text-slate-500">站</span></div>
+                        <div class="mt-2 text-[11px] text-amber-600 font-semibold flex items-center space-x-1">
+                            <i class="fa-solid fa-shield-cat"></i>
+                            <span id="kpi-full-sub">模型未來預警（非目前事件）</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="flex items-center justify-between text-xs text-slate-500 font-medium">
+                            <span>已完成調度紀錄</span>
+                            <i class="fa-solid fa-clipboard-check text-amber-500"></i>
+                        </div>
+                        <div id="kpi-log-count" class="text-2xl font-black text-slate-900 mt-2 font-mono">0 <span class="text-xs font-normal text-slate-500">筆</span></div>
+                        <div class="mt-2 text-[11px] text-amber-600 font-semibold flex items-center space-x-1">
+                            <i class="fa-solid fa-people-arrows"></i>
+                            <span>供下一班調度員交班查閱</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 24-hour historical replay timeline -->
+                <section class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm" aria-labelledby="overview-timeline-title">
+                    <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+                        <div>
+                            <div class="text-[11px] font-bold tracking-[0.18em] text-blue-600 uppercase">24 小時歷史回放</div>
+                            <h2 id="overview-timeline-title" class="text-lg font-black text-slate-900 mt-1">選擇資料基準時間</h2>
+                        </div>
+
+                        <div class="flex items-center gap-2 sm:gap-3" aria-label="目前與預測時間">
+                            <div class="min-w-[92px] rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">目前</div>
+                                <div id="timeline-current-time" class="text-lg font-black font-mono text-slate-900">06:30</div>
+                            </div>
+                            <i class="fa-solid fa-arrow-right text-slate-400 text-xs" aria-hidden="true"></i>
+                            <div class="min-w-[92px] rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">30 分鐘</div>
+                                <div id="timeline-30-time" class="text-lg font-black font-mono text-slate-900">07:00</div>
+                            </div>
+                            <i class="fa-solid fa-arrow-right text-slate-400 text-xs" aria-hidden="true"></i>
+                            <div class="min-w-[92px] rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">60 分鐘</div>
+                                <div id="timeline-60-time" class="text-lg font-black font-mono text-slate-900">07:30</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 mt-5">
+                        <button type="button" onclick="moveOverviewTimeline(-1)" class="shrink-0 w-10 h-12 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition" aria-label="前一個時段">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <div id="overview-timeline-track" class="flex-1 flex gap-2 overflow-x-auto scroll-smooth py-1" aria-label="每 30 分鐘時段"></div>
+                        <button type="button" onclick="moveOverviewTimeline(1)" class="shrink-0 w-10 h-12 rounded-xl border border-blue-200 text-blue-600 hover:bg-blue-50 transition" aria-label="後一個時段">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[11px] text-slate-500">
+                        <span id="overview-timeline-date">2026/06/30 模型測試日</span>
+                        <span>每 30 分鐘一格 · 共 48 個時段</span>
+                    </div>
+                </section>
+
+                <!-- Main GIS Map & Station Details Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left: GIS Map Panel (2/3 width) -->
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col space-y-4">
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div class="flex items-center space-x-3">
+                                <h2 class="text-sm font-bold text-slate-800">新北市公共自行車 GIS 實時監測與預測圖層</h2>
+                                <span id="current-pattern-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">全區載入中</span>
+                            </div>
+
+                            <!-- District & Filter Selectors -->
+                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                <select id="district-filter" onchange="handleDistrictChange(this.value)" class="bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium">
+                                    <option value="ALL" selected>載入行政區中</option>
+                                </select>
+
+                                <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+                                    <button onclick="filterStatus('all')" id="filter-btn-all" class="px-2.5 py-1 rounded-md bg-white text-slate-800 font-semibold shadow-sm transition">全部</button>
+                                    <button onclick="filterStatus('empty')" id="filter-btn-empty" class="px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center space-x-1">
+                                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                        <span>缺車</span>
+                                    </button>
+                                    <button onclick="filterStatus('full')" id="filter-btn-full" class="px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center space-x-1">
+                                        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                        <span>滿站</span>
+                                    </button>
+                                    <button onclick="filterStatus('fault')" id="filter-btn-fault" class="px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center space-x-1">
+                                        <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                                        <span>有待修車</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="fault-filter-note" class="hidden mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">尚無待修車預測資料：本系統四個 SageMaker 模型只預測 +30／+60 分鐘可借／可還比例，無維修目標，且目前無逐站逐時的維修標籤可訓練。此處不以「不可用車柱比例／停用站／缺車／滿站」冒充維修，故不顯示站點（非「預測沒有待修車」）。</div>
+                        </div>
+
+                        <!-- Map Render Canvas -->
+                        <div class="relative rounded-xl overflow-hidden border border-slate-200 h-[450px]">
+                            <div id="map"></div>
+
+                            <!-- Time Machine Slider Overlay (需求 1: 只留現在、+30、+60分鐘) -->
+                            <div class="absolute bottom-3 left-3 right-3 z-[500] bg-white/95 backdrop-blur border border-slate-200 rounded-xl p-3 shadow-lg max-w-xl mx-auto">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <div class="flex items-center space-x-2">
+                                        <i class="fa-solid fa-clock-rotate-left text-blue-600"></i>
+                                        <span class="text-xs font-bold text-slate-800">AI 供需時間軸預測推移 (未來 30 / 60 分鐘)</span>
+                                    </div>
+                                    <span id="slider-label" class="text-xs font-mono font-bold px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-200 rounded">基準時點 06:30</span>
+                                </div>
+                                <input type="range" id="time-slider" min="0" max="60" step="30" value="0" oninput="updatePredictiveTime(this.value)" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                                <div class="flex justify-between text-[10px] text-slate-500 font-mono mt-1 px-1">
+                                    <span>基準時點</span>
+                                    <span>+30 分鐘預估</span>
+                                    <span>+60 分鐘預估</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Simplified station forecast -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm flex flex-col gap-4">
+                        <div>
+                            <span class="inline-flex text-[10px] px-2 py-1 bg-blue-100 text-blue-700 rounded-lg font-bold" id="panel-station-type-tag">載入中</span>
+                            <h2 id="panel-station-name" class="text-xl font-black text-slate-900 mt-2">載入中...</h2>
+                            <div class="text-xs text-slate-500 mt-1" id="panel-station-sub">--</div>
+                        </div>
+
+                        <div id="panel-forecast-explanation" class="rounded-xl bg-amber-50/70 border border-amber-200 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+                            正在整理未來一小時的供需變化原因…
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">現在</div>
+                                <div id="panel-bikes-now" class="text-xl font-black font-mono text-slate-900">--</div>
+                                <div class="text-[9px] text-slate-500">可借車輛</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">+30 分</div>
+                                <div id="panel-bikes-30" class="text-xl font-black font-mono text-slate-900">--</div>
+                                <div class="text-[9px] text-slate-500">可借車輛</div>
+                            </div>
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                                <div class="text-[10px] text-slate-500">+60 分</div>
+                                <div id="panel-bikes-60" class="text-xl font-black font-mono text-slate-900">--</div>
+                                <div class="text-[9px] text-slate-500">可借車輛</div>
+                            </div>
+                        </div>
+
+                        <div class="h-40 w-full">
+                            <canvas id="chart-forecast-bikes"></canvas>
+                        </div>
+
+                        <div class="mt-auto bg-blue-50/80 border border-blue-200 rounded-xl p-4 text-xs text-slate-700">
+                            <div id="panel-recommendation-title" class="font-bold text-blue-800">建議介入：持續監測</div>
+                            <p id="gov-decision-recommendation" class="text-[11px] text-slate-600 leading-relaxed mt-1.5">目前供需穩定，建議持續觀察後續變化。</p>
+                            <button type="button" onclick="switchTab('trucks')" class="w-full mt-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold transition">查看系統自動派遣結果</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 連續模型預警（歷史回放）：資料來自既有 /api/replay 各半小時 SageMaker MME 的 +30 分鐘預警，
+                     依 stationKey 檢查所選基準時段往前連續 1/2/3 小時是否皆有缺車/滿站模型預警。
+                     這是「連續模型預警」，非「已實際缺車/滿站」。時段不足者標資料不足，不算 0 站、不補假值。 -->
+                <section id="overview-persistent-section" class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4" aria-labelledby="persistent-alert-title">
+                    <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">連續模型預警（歷史回放）</span>
+                                <span id="overview-alert-district" class="text-[11px] font-bold text-blue-600">全資料集</span>
+                            </div>
+                            <h3 id="persistent-alert-title" class="text-base font-black text-slate-800 mt-1">重複缺車／滿車站點（連續模型預警）</h3>
+                            <p class="text-[11px] text-slate-500 mt-1">資料為 SageMaker MME 對歷史回放各半小時時點的 +30 分鐘缺車/滿站<strong>模型預警</strong>（非實際缺車/滿站）；檢查所選基準時段往前連續 1／2／3 小時是否皆有預警。時段不足者標資料不足。</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <select id="overview-alert-kind" onchange="setOverviewPersistentAlertKind(this.value)" class="bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg px-3 py-2 font-bold focus:outline-none focus:border-blue-500">
+                                <option value="shortage">重複缺車</option>
+                                <option value="full">重複滿車</option>
+                            </select>
+                            <select id="overview-alert-hours" onchange="setOverviewPersistentAlertHours(this.value)" class="bg-slate-50 border border-slate-300 text-slate-700 text-xs rounded-lg px-3 py-2 font-bold focus:outline-none focus:border-blue-500">
+                                <option value="1">已持續滿 1 小時</option>
+                                <option value="2">已持續滿 2 小時</option>
+                                <option value="3">已持續滿 3 小時</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="overview-persistent-alert-summary" class="text-xs font-bold text-slate-600">正在整理警報…</div>
+                    <div id="overview-persistent-alert-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+                </section>
+            </div>
+
+            <!-- TAB 2: 站點供需型態分析 (Patterns Explorer) -->
+            <div id="tab-patterns" class="tab-content space-y-6">
+                <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 rounded-2xl shadow-md space-y-2">
+                    <h2 class="text-xl font-bold">新北市站點四大供需型態分類</h2>
+                    <p class="text-xs text-slate-300">供需型態是以 2026 年 1–4 月訓練資料完成的四種 K-Means「每站分類」，作為 XGBoost 模型的輸入特徵之一；無法可靠對應訓練場站的站點標為「未分群」，不硬分進四型（四個 XGBoost 模型只預測 +30／+60 分鐘可借／可還比例，不預測 K-Means 類別）。表格數字為對回放日各半小時時段呼叫既有 SageMaker MME 的真實 +30 分鐘預測整日彙整，非 appData.js 靜態值。</p>
+                </div>
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4">
+                    <div class="flex justify-between items-center border-b pb-3">
+                        <h3 class="text-sm font-bold text-slate-800">站點資料庫清單</h3>
+                        <input type="text" id="station-search-input" oninput="handleStationSearch(this.value)" placeholder="搜尋站點名稱、路段..." class="bg-slate-50 border border-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 w-64">
+                    </div>
+                    <p id="pattern-sort-status" class="text-xs text-slate-500" role="status" aria-live="polite">連續點選同一欄位：升冪 → 降冪 → 預設排序。</p>
+                    <p id="pattern-stats-progress" class="text-xs text-blue-600 font-semibold" role="status" aria-live="polite"></p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="p-3" scope="col" data-pattern-sort="name" aria-sort="none"><button type="button" onclick="sortPatternTable('name')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以站點名稱排序">站點名稱<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="district" aria-sort="none"><button type="button" onclick="sortPatternTable('district')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以行政區排序">行政區<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="total" aria-sort="none"><button type="button" onclick="sortPatternTable('total')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以車柱數排序">車柱數<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="pattern" aria-sort="none"><button type="button" onclick="sortPatternTable('pattern')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以型態標籤排序">型態標籤<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="avgOccupancy" aria-sort="none"><button type="button" onclick="sortPatternTable('avgOccupancy')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="各有效時段模型 +30 分鐘預測『可借車比例』的整日平均（真實 SageMaker MME 預測，非租借交易量）">平均滿載率<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="busiestHour" aria-sort="none"><button type="button" onclick="sortPatternTable('busiestHour')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="相鄰有效預測時段『預測車數變動』最大者，顯示其 +30 分鐘目標時間；此為模型預測車數變動，非真實租借交易量">最忙時段<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                    <th class="p-3" scope="col" data-pattern-sort="riskHours" aria-sort="none"><button type="button" onclick="sortPatternTable('riskHours')" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="模型 +30 分鐘缺車或滿站預警的時段數 × 0.5 小時（依後端回傳門檻）">風險時數<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-station-tbody" class="divide-y divide-slate-100 font-mono"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: 防呆與容積安全鎖 (Foolproof) -->
+            <div id="tab-foolproof" class="tab-content space-y-6">
+                <div class="bg-gradient-to-r from-slate-900 to-blue-950 text-white p-6 rounded-2xl shadow-md space-y-2">
+                    <h2 class="text-xl font-bold">調度防呆與二次失衡阻斷機制</h2>
+                    <p class="text-xs text-slate-300">避免派車過量導致目標站無位可還的二次災害，並自動排除故障待修車輛。</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+                        <h3 class="font-bold text-slate-800 text-sm">目標站容積鎖（規則草案）</h3>
+                        <p class="text-xs text-slate-500">85% 尚未由資料驗證，也未經主管機關核定。</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+                        <h3 class="font-bold text-slate-800 text-sm">來源站最低保留（規則草案）</h3>
+                        <p class="text-xs text-slate-500">35% 為介面規則提案，尚未由資料驗證。</p>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+                        <h3 class="font-bold text-slate-800 text-sm">故障車扣除（待串接）</h3>
+                        <p class="text-xs text-slate-500">目前沒有車輛級故障資料，尚未套入預測。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: 友愛接力偵測與發簡訊 (需求 4: 新增自動偵測與發簡訊頁面) -->
+            <div id="tab-relay" class="tab-content space-y-6">
+                <div class="bg-gradient-to-r from-emerald-900 to-teal-950 text-white p-6 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
+                            🤖 AI 智慧失衡偵測與市民分流
+                        </span>
+                        <h2 class="text-xl font-bold">友愛接力 · 鄰近市民分流簡訊發送系統</h2>
+                        <p class="text-xs text-emerald-100">以模型候選站產生訊息預覽；會員篩選、個資同意、優惠券與簡訊發送尚待 API。</p>
+                    </div>
+                    <button onclick="triggerSmsDispatch()" class="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold rounded-xl text-xs shadow-lg transition flex items-center space-x-2">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>一鍵推播分流簡訊</span>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+                        <h3 class="text-sm font-bold text-slate-800 border-b pb-2">1. 即時失衡熱點偵測</h3>
+                        <div id="relay-risk-list" class="space-y-2 text-xs"><p class="p-4 text-slate-400">載入模型候選中</p></div>
+                    </div>
+
+                    <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+                        <h3 class="text-sm font-bold text-slate-800 border-b pb-2">2. 簡訊預覽與受眾設定</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="font-bold text-slate-700 block mb-1">目標監測站點：</label>
+                                    <input type="text" id="sms-target-station" value="捷運板橋站 (3號出口)" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 font-bold text-slate-800">
+                                </div>
+                                <div>
+                                    <label class="font-bold text-slate-700 block mb-1">篩選半徑與受眾：</label>
+                                    <input id="sms-audience" type="text" value="缺會員定位與同意資料，無法計算" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 text-slate-700 font-mono">
+                                </div>
+                                <div>
+                                    <label class="font-bold text-slate-700 block mb-1">獎勵方案：</label>
+                                    <input type="text" value="獎勵方案待主管機關核定" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg p-2 text-slate-700 font-bold">
+                                </div>
+                            </div>
+                            <div class="bg-slate-900 text-slate-200 p-4 rounded-xl font-mono text-[11px] space-y-2 border border-slate-800 flex flex-col justify-between">
+                                <div>
+                                    <div class="text-slate-500 border-b border-slate-800 pb-1 mb-2">【簡訊內容預覽 · 模擬發送】</div>
+                                    <p class="leading-relaxed text-slate-300" id="sms-content-preview">請先選擇模型候選站。此處只產生內容預覽，不會真的發送。</p>
+                                </div>
+                                <div class="text-[10px] text-emerald-400 pt-2 border-t border-slate-800">
+                                    ● 狀態：僅預覽；尚未串會員、同意管理與簡訊 API
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: 調度日誌 -->
+            <div id="tab-faults" class="tab-content space-y-6">
+                <div class="bg-gradient-to-r from-amber-900 to-slate-900 text-white p-6 rounded-2xl shadow-md">
+                    <div>
+                        <h2 class="text-xl font-bold">調度日誌</h2>
+                        <p class="text-xs text-amber-100">記錄已完成的 A／B 站調度，方便下一班調度員查閱。</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-3">
+                    <div>
+                        <h3 class="font-bold text-slate-800">完成紀錄</h3>
+                        <p class="text-xs text-slate-500">目前保存在這台瀏覽器；部署 AWS 後可改接 API 與 DynamoDB，供不同調度員共同查閱。</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3"><div class="text-[11px] text-emerald-700">累積預估節省里程</div><div id="dispatch-log-saved-km" class="text-xl font-black text-emerald-800">0.00 km</div></div>
+                        <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3"><div class="text-[11px] text-emerald-700">累積預估減碳</div><div id="dispatch-log-co2" class="text-xl font-black text-emerald-800">0.000 kg CO₂e</div></div>
+                    </div>
+                    <table class="w-full text-left text-xs text-slate-600 font-mono">
+                        <thead class="bg-slate-50 text-slate-500 font-bold">
+                            <tr>
+                                <th class="p-3">完成時間</th>
+                                <th class="p-3">調度員</th>
+                                <th class="p-3">A 站</th>
+                                <th class="p-3">後續站點</th>
+                                <th class="p-3">備註</th>
+                                <th class="p-3">ESG 估算</th>
+                                <th class="p-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dispatch-log-body" class="divide-y divide-slate-100"><tr><td colspan="7" class="p-6 text-center font-sans text-slate-500">尚無調度紀錄</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 7: 調度員派車接單 (需求 2: 改造成 Uber風的派車接單介面) -->
+            <div id="tab-trucks" class="tab-content space-y-6">
+                <div class="bg-gradient-to-r from-blue-900 to-slate-900 text-white p-6 rounded-2xl space-y-2">
+                    <h2 class="text-xl font-bold">調度車路線規劃</h2>
+                    <p id="dispatch-route-summary" class="text-sm text-blue-100"></p>
+                </div>
+                <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div class="bg-white border rounded-2xl p-4"><div class="text-xs text-slate-500">合併調度路線</div><div id="esg-route-km" class="text-2xl font-black text-slate-900 mt-1">—</div><div class="text-[10px] text-slate-400">公里</div></div>
+                    <div class="bg-white border rounded-2xl p-4"><div class="text-xs text-slate-500">分開派車基準</div><div id="esg-baseline-km" class="text-2xl font-black text-slate-900 mt-1">—</div><div class="text-[10px] text-slate-400">公里（情境估算）</div></div>
+                    <div class="bg-white border rounded-2xl p-4"><div class="text-xs text-slate-500">預估節省里程</div><div id="esg-saved-km" class="text-2xl font-black text-emerald-700 mt-1">—</div><div class="text-[10px] text-slate-400">公里</div></div>
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4"><div class="text-xs text-emerald-700">預估減少碳排</div><div id="esg-co2-kg" class="text-2xl font-black text-emerald-800 mt-1">—</div><div class="text-[10px] text-emerald-700">kg CO₂e</div></div>
+                </div>
+                <p id="esg-estimate-note" class="text-xs text-slate-500">情境估算：比較各站分開派車與合併成一趟；暫採 0.25 kg CO₂e／公里，非正式碳盤查結果。</p>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-white border rounded-2xl p-5 space-y-4">
+                        <h3 class="font-bold">自動多站調度任務</h3>
+                        <p class="text-xs text-slate-500">系統自動選擇最高優先 A 站，並安排 A 站 1 公里內最多 3 個其他警示站，不需人工挑選。</p>
+                        <div class="text-sm font-bold">開始位置：新北市政府（預設）</div>
+                        <p id="route-location-status" role="status" class="text-xs text-slate-500">目前使用新北市政府；可按重新定位改用裝置位置。</p>
+                        <button type="button" onclick="locateTruckOrigin()" class="border rounded-lg px-3 py-2 text-sm">重新定位</button>
+                        <p id="dispatch-radius-status" class="text-xs text-blue-700">自動排程範圍：A 站周圍 1 公里，最多 A、B、C、D 共 4 站。</p>
+                        <div id="auto-dispatch-status" class="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">正在計算自動派遣優先順序…</div>
+                        <ol id="dispatch-route-stops" class="space-y-3 text-sm"></ol>
+                        <button type="button" onclick="rebuildDispatchCandidate()" class="w-full border border-blue-300 text-blue-700 hover:bg-blue-50 rounded-lg px-3 py-2 text-sm font-bold">重新自動排程</button>
+                        <p id="dispatch-route-endpoint" class="text-sm font-bold"></p>
+                        <p id="dispatch-route-error" role="status" class="text-xs text-red-600"></p>
+                        <a id="dispatch-route-link" target="_blank" rel="noopener noreferrer" class="block rounded-xl bg-blue-600 text-white text-center font-bold p-3 text-sm" onclick="return validateDispatchRoute()">在 Google Maps 開啟完整路線 ↗</a>
+                        <div class="border-t pt-4 space-y-2">
+                            <input id="dispatch-operator" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="調度員姓名（選填）">
+                            <textarea id="dispatch-note" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="完成數量或交班備註（選填）"></textarea>
+                            <button type="button" onclick="completeDispatchAndLog()" class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3 text-sm">完成調度並寫入日誌</button>
+                        </div>
+                        <p class="text-xs text-slate-500">Google Maps 會規劃實際道路與行車時間；手機可接續導航，電腦顯示路線預覽。尚未串接施工資料。</p>
+                    </div>
+                    <div class="lg:col-span-2 bg-white border rounded-2xl p-5 space-y-3">
+                        <h3 class="font-bold text-sm">完整行車路線</h3>
+                        <p class="text-xs text-slate-500">由目前位置出發，依站點清單順序計算道路路線。預估時間不含停靠、即時路況及施工資訊。</p>
+                        <p id="truck-route-status" role="status" class="text-sm text-blue-700">等待計算路線</p><button type="button" onclick="loadTruckRoadRoute()" class="border rounded-lg px-3 py-2 text-sm">更新地圖路線</button><div class="h-[420px]"><div id="map-trucks"></div></div><p class="text-xs text-slate-500">路線：OSRM 公開示範服務 · 地圖：OpenStreetMap。此處為道路路線預覽，尚無即時定位跟隨。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 8: 嚴重缺車/滿站即時告警 (Alerts) -->
+            <div id="tab-alerts" class="tab-content space-y-6">
+                <div class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-4">
+                    <h3 class="text-sm font-bold text-slate-800">全區即時失衡告警與違約風險清單</h3>
+                    <p class="text-xs text-slate-500"><span class="text-red-600 font-bold">紅色只代表缺車</span>；<span class="text-amber-600 font-bold">黃色只代表滿車</span>。滿車任務優先排序；模型結果供人工確認，不會自動派車。</p>
+                    <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-600">警示分類
+                        <select id="alert-kind-filter" onchange="setAlertKindFilter(this.value)" class="border border-slate-300 rounded-lg bg-white px-3 py-2 text-sm text-slate-800">
+                            <option value="ALL">全部</option>
+                            <option value="shortage">缺車（紅色）</option>
+                            <option value="full">滿車（黃色）</option>
+                        </select>
+                    </label>
+                    <p id="alert-sort-status" class="text-xs text-slate-500" role="status" aria-live="polite">連續點選同一欄位：升冪 → 降冪 → 預設排序。實質水位依百分比排序。</p>
+                    <table class="w-full text-left text-xs text-slate-600 font-mono">
+                        <thead class="bg-slate-50 text-slate-500 font-bold">
+                            <tr>
+                                <th class="p-3" scope="col" data-alert-sort="0" aria-sort="none"><button type="button" onclick="sortAlertTable(0)" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以等級排序">等級<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                <th class="p-3" scope="col" data-alert-sort="1" aria-sort="none"><button type="button" onclick="sortAlertTable(1)" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以站點名稱排序">站點名稱<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                <th class="p-3" scope="col" data-alert-sort="2" aria-sort="none"><button type="button" onclick="sortAlertTable(2)" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以型態排序">型態<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                <th class="p-3" scope="col" data-alert-sort="3" aria-sort="none"><button type="button" onclick="sortAlertTable(3)" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="依水位百分比排序">實質水位<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                <th class="p-3" scope="col" data-alert-sort="4" aria-sort="none"><button type="button" onclick="sortAlertTable(4)" class="inline-flex items-center gap-1 hover:text-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded" title="點選以持續時間排序">持續時間<span data-sort-icon aria-hidden="true">↕</span></button></th>
+                                <th class="p-3">處置動作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alert-station-tbody" class="divide-y divide-slate-100"><tr><td colspan="6" class="p-6 text-center text-slate-400">載入模型告警中</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="dispatch-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] flex items-center justify-center hidden">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-slate-200">
+            <h3 class="text-base font-bold text-slate-800 mb-2">下達智慧調度派車指令</h3>
+            <p class="text-xs text-slate-500 mb-4" id="modal-target-station">目標站點設定</p>
+            <div class="flex justify-end space-x-2">
+                <button onclick="closeModal('dispatch-modal')" class="px-4 py-2 bg-slate-100 rounded-xl text-xs">取消</button>
+                <button onclick="confirmDispatch()" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs">確認下達</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const stationData = (typeof allStations !== 'undefined' && allStations.length > 0) ? allStations : [];
+        const overviewTimelineSlots = Array.from({ length: 48 }, (_, index) => {
+            const hour = Math.floor(index / 2).toString().padStart(2, '0');
+            return `${hour}:${index % 2 === 0 ? '00' : '30'}`;
+        });
+
+        let map, markersGroup, mapHotspots, mapTrucks;
+        let currentTimeStepIndex = 0;
+        let currentForecastMinutes = 0;
+        let currentTimelineIndex = Math.max(0, overviewTimelineSlots.indexOf('06:30'));
+        let currentFilter = 'all';
+        let currentDistrict = 'ALL';
+        let currentPatternFilter = 'ALL';
+        let activeFilterPage = 'overview';
+        let tablePatternFilter = 'ALL';
+        let gisPatternFilter = 'ALL';
+        let gisPatternLayer;
+        let currentSelectedStationId = null;
+        let chartForecastBikes;
+
+        window.onload = function() {
+            renderOverviewTimeline();
+            initMap();
+            if (stationData.length > 0) {
+                const initialStation = stationData.find(station => station.pattern === currentPatternFilter) || stationData[0];
+                selectStationForPanel(initialStation.id);
+                handleStationSearch('');
+            }
+        };
+
+        function timelineTimeAt(offsetMinutes) {
+            const offsetSlots = Math.round(offsetMinutes / 30);
+            return overviewTimelineSlots[(currentTimelineIndex + offsetSlots) % overviewTimelineSlots.length];
+        }
+
+        function renderOverviewTimeline() {
+            const track = document.getElementById('overview-timeline-track');
+            if (!track) return;
+
+            track.innerHTML = overviewTimelineSlots.map((slot, index) => {
+                const isActive = index === currentTimelineIndex;
+                const classes = isActive
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600';
+                return `<button type="button" id="timeline-slot-${index}" onclick="selectOverviewTimelineSlot(${index})" class="shrink-0 min-w-[82px] h-12 rounded-xl border text-sm font-bold font-mono transition ${classes}" aria-pressed="${isActive}">${slot}</button>`;
+            }).join('');
+
+            document.getElementById('timeline-current-time').innerText = timelineTimeAt(0);
+            document.getElementById('timeline-30-time').innerText = timelineTimeAt(30);
+            document.getElementById('timeline-60-time').innerText = timelineTimeAt(60);
+            const sliderLabel = document.getElementById('slider-label');
+            if (sliderLabel) {
+                const prefix = currentForecastMinutes === 0 ? '基準時點' : `+${currentForecastMinutes} 分鐘預估`;
+                sliderLabel.innerText = `${prefix} ${timelineTimeAt(currentForecastMinutes)}`;
+            }
+            requestAnimationFrame(() => {
+                const activeButton = document.getElementById(`timeline-slot-${currentTimelineIndex}`);
+                if (activeButton) {
+                    track.scrollLeft = activeButton.offsetLeft - track.offsetLeft - (track.clientWidth - activeButton.clientWidth) / 2;
+                }
+            });
+        }
+
+        function selectOverviewTimelineSlot(index) {
+            currentTimelineIndex = (index + overviewTimelineSlots.length) % overviewTimelineSlots.length;
+            currentForecastMinutes = 0;
+            currentTimeStepIndex = 0;
+            const slider = document.getElementById('time-slider');
+            if (slider) slider.value = 0;
+            renderOverviewTimeline();
+            // MME 模式：基準時段變更 → 按需向後端請求該時段預測（liveMode.js 提供）。
+            // 由 liveMode 負責 fetch + 重渲染；此處先不呼叫 updatePredictiveTime 以免用舊資料重畫。
+            if (typeof window.onTimelineSlotChanged === 'function'
+                && typeof window.YOUBIKE_CURRENT_MODE !== 'undefined'
+                && window.YOUBIKE_CURRENT_MODE === 'mme') {
+                window.onTimelineSlotChanged();
+                return;
+            }
+            updatePredictiveTime(0);
+        }
+
+        function moveOverviewTimeline(direction) {
+            selectOverviewTimelineSlot(currentTimelineIndex + direction);
+        }
+
+        function stationBikesAtSelectedTime(station) {
+            // 由 appIntegration.js 以本次模型回放資料覆寫；此處為後備，資料不足回 null（不臆造）。
+            const forecastSlots = Math.round(currentForecastMinutes / 30);
+            const displaySlot = (currentTimelineIndex + forecastSlots) % overviewTimelineSlots.length;
+            const row = station.timeline?.[displaySlot % overviewTimelineSlots.length];
+            if (!row || row[0] === null || row[0] === undefined) return null;
+            const value = currentForecastMinutes === 60 ? row[2] : currentForecastMinutes === 30 ? row[1] : row[0];
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function updateOverviewRiskCounts() {
+            let emptyCount = 0;
+            let fullCount = 0;
+            // 注意：此後備版本會被 appIntegration.js 以「本次四個模型的比例門檻」覆寫。
+            // 若後備版本被呼叫（未載入 appIntegration），不臆造門檻，僅顯示待載入。
+            void emptyCount; void fullCount;
+            document.getElementById('kpi-empty-count').innerHTML = `— <span class="text-xs font-normal text-slate-500">站</span>`;
+            document.getElementById('kpi-full-count').innerHTML = `— <span class="text-xs font-normal text-slate-500">站</span>`;
+        }
+
+        // 舊版三欄（平均滿載率／最忙時段／風險時數）：全部來自 PatternDayStats 的
+        // 「整日 +30 分鐘真實 MME 預測」彙整；有效時段不足顯示「統計資料不足」，不補假值。
+        function renderPatternTable(stations) {
+            const tbody = document.getElementById('pattern-station-tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const ready = window.PatternDayStats && window.PatternDayStats.isReady();
+            stations.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 cursor-pointer";
+                tr.onclick = () => selectStationForPanel(s.id);
+                const patternBadge = s.isUnclustered
+                    ? '<span class="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[10px] font-bold">' + s.pattern + '</span>'
+                    : '<span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-bold">' + s.pattern + '</span>';
+
+                let avgCell, busiestCell, riskCell;
+                if (!ready) {
+                    avgCell = busiestCell = riskCell = '<span class="text-slate-400">整日預測載入中…</span>';
+                } else {
+                    const st = window.PatternDayStats.getStats(s.key);
+                    if (!st || !st.available) {
+                        const n = st ? st.validCount : 0;
+                        const insuff = `<span class="text-slate-400">統計資料不足（有效 ${n} 時段）</span>`;
+                        avgCell = busiestCell = riskCell = insuff;
+                    } else {
+                        avgCell = (st.avgOccupancy * 100).toFixed(1) + '%';
+                        busiestCell = st.busiestTarget
+                            ? `${st.busiestTarget}`
+                            : '<span class="text-slate-400">統計資料不足（無相鄰有效時段）</span>';
+                        riskCell = `${st.riskHours.toFixed(1)} 小時`;
+                    }
+                }
+                tr.innerHTML = `
+                    <td class="p-3 font-sans font-bold text-blue-600">${s.name}</td>
+                    <td class="p-3 font-sans">${s.district}</td>
+                    <td class="p-3">${s.total} 柱</td>
+                    <td class="p-3 font-sans">${patternBadge}</td>
+                    <td class="p-3">${avgCell}</td>
+                    <td class="p-3 font-bold text-slate-900">${busiestCell}</td>
+                    <td class="p-3 text-emerald-600 font-bold">${riskCell}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        let patternSortKey = null;
+        let patternSortDirection = 'asc';
+        let patternSearchQuery = '';
+        const patternSortLabels = {"name":"站點名稱","district":"行政區","total":"車柱數","pattern":"型態標籤","avgOccupancy":"平均滿載率","busiestHour":"最忙時段","riskHours":"風險時數"};
+
+        // 排序值：三欄用 PatternDayStats 整日彙整（真實 +30 MME 預測）；缺值回 null（呼叫端排到最後），
+        // 不以假值（40% / 08:00 / 0）替代。
+        function patternSortValue(station, key) {
+            if (key === 'total') {
+                const n = parseFloat(String(station.total ?? '').replace(/,/g, ''));
+                return Number.isFinite(n) ? n : null;
+            }
+            if (key === 'avgOccupancy' || key === 'busiestHour' || key === 'riskHours') {
+                const st = (window.PatternDayStats && window.PatternDayStats.isReady())
+                    ? window.PatternDayStats.getStats(station.key) : null;
+                if (!st || !st.available) return null;               // 統計資料不足 → null（排最後）
+                if (key === 'avgOccupancy') return Number.isFinite(st.avgOccupancy) ? st.avgOccupancy : null;
+                if (key === 'riskHours') return Number.isFinite(st.riskHours) ? st.riskHours : null;
+                // busiestHour：+30 目標時間轉分鐘；無相鄰有效時段 → null
+                if (!st.busiestTarget) return null;
+                const [h, m] = st.busiestTarget.split(':').map(Number);
+                return h * 60 + m;
+            }
+            const value = station[key];
+            return String(value ?? '');
+        }
+
+        function sortPatternTable(key) {
+            if (!Object.prototype.hasOwnProperty.call(patternSortLabels, key)) return;
+            if (patternSortKey !== key) {
+                patternSortKey = key;
+                patternSortDirection = 'asc';
+            } else if (patternSortDirection === 'asc') {
+                patternSortDirection = 'desc';
+            } else {
+                patternSortKey = null;
+                patternSortDirection = 'asc';
+            }
+            handleStationSearch(patternSearchQuery);
+        }
+
+        // 觸發整日 +30 MME 預測彙整（限並行、快取）；載入中顯示進度，完成後重繪表格一次。
+        function ensurePatternDayStatsLoaded() {
+            // 只在「站點供需型態分析」分頁啟動整日彙整，避免其他頁面載入時就對 Endpoint 發大量請求。
+            if (activeFilterPage !== 'patterns') return;
+            if (!window.PatternDayStats || window.PatternDayStats.isReady()) return;
+            if (ensurePatternDayStatsLoaded._started) return;   // 只啟動一次
+            ensurePatternDayStatsLoaded._started = true;
+            const prog = document.getElementById('pattern-stats-progress');
+            if (prog) prog.textContent = '正在對回放日各半小時時段呼叫 SageMaker MME（+30 分鐘預測）並彙整整日統計…（0/48）';
+            window.PatternDayStats.ensureDayStats((done, total) => {
+                if (prog) prog.textContent = `整日 +30 分鐘 MME 預測載入中…（${done}/${total} 時段）`;
+            }).then(entry => {
+                if (prog) {
+                    prog.textContent = `整日 +30 分鐘 MME 預測已彙整（${entry.slotsOk}/${entry.slotsFetched} 時段成功，回放日 ${entry.date}）。`;
+                }
+                // 完成後重繪目前篩選/排序結果（此時三欄有真實彙整值）
+                handleStationSearch(patternSearchQuery);
+            }).catch(e => {
+                ensurePatternDayStatsLoaded._started = false;   // 允許重試
+                if (prog) prog.textContent = '整日統計載入失敗：' + ((e && e.message) || e) + '（不以靜態值頂替；可切換分頁重試）';
+            });
+        }
+
+        function handleStationSearch(val) {
+            ensurePatternDayStatsLoaded();
+            patternSearchQuery = val;
+            const query = val.trim().toLowerCase();
+            const filtered = stationData.filter(s => (tablePatternFilter === 'ALL' || s.pattern === tablePatternFilter) && (!query ||
+                (s.name && s.name.toLowerCase().includes(query)) ||
+                (s.district && s.district.toLowerCase().includes(query))
+            ));
+            if (patternSortKey) {
+                filtered.sort((a, b) => {
+                    const left = patternSortValue(a, patternSortKey);
+                    const right = patternSortValue(b, patternSortKey);
+                    // 缺值（null）一律排到最後，不論升/降冪，避免以假值頂替。
+                    const leftNull = (left === null || left === undefined);
+                    const rightNull = (right === null || right === undefined);
+                    if (leftNull && rightNull) return 0;
+                    if (leftNull) return 1;
+                    if (rightNull) return -1;
+                    const result = typeof left === 'number' ? left - right : left.localeCompare(right, 'zh-Hant', { numeric: true });
+                    return patternSortDirection === 'asc' ? result : -result;
+                });
+            }
+            const visible = filtered.slice(0, query ? 50 : 30);
+            renderPatternTable(visible);
+            if (!visible.length) document.getElementById('pattern-station-tbody').innerHTML = '<tr><td colspan="7" class="p-6 text-center text-slate-400">找不到符合條件的站點</td></tr>';
+            document.querySelectorAll('[data-pattern-sort]').forEach(header => {
+                const active = header.dataset.patternSort === patternSortKey;
+                header.setAttribute('aria-sort', active ? (patternSortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+                header.querySelector('[data-sort-icon]').textContent = active ? (patternSortDirection === 'asc' ? '↑' : '↓') : '↕';
+            });
+            const order = patternSortKey ? patternSortLabels[patternSortKey] + '（' + (patternSortDirection === 'asc' ? '升冪 ↑' : '降冪 ↓') + '）' : '原始順序（點選欄位：升冪 → 降冪 → 預設）';
+            document.getElementById('pattern-sort-status').textContent = order + ' · 顯示 ' + visible.length + ' / ' + filtered.length + ' 站';
+        }
+
+
+        let alertSortColumn = null;
+        let alertSortDirection = 'asc';
+        const alertOriginalOrder = new WeakMap();
+        let alertNextOrder = 0;
+        const alertSortLabels = ['等級', '站點名稱', '型態', '實質水位', '持續時間'];
+
+        function alertSortValue(row, column) {
+            const value = row.cells[column].textContent.trim();
+            if (column === 0) return Number(value.match(/P(\d+)/i)?.[1] ?? Infinity);
+            if (column === 3) {
+                const percent = value.match(/([\d.]+)\s*%/);
+                if (percent) return Number(percent[1]);
+                const ratio = value.match(/([\d.]+)\s*\/\s*([\d.]+)/);
+                return ratio && Number(ratio[2]) > 0 ? Number(ratio[1]) / Number(ratio[2]) * 100 : 0;
+            }
+            if (column === 4) {
+                const hours = Number(value.match(/([\d.]+)\s*小時/)?.[1] ?? 0);
+                const minutes = Number(value.match(/([\d.]+)\s*分/)?.[1] ?? 0);
+                const seconds = Number(value.match(/([\d.]+)\s*秒/)?.[1] ?? 0);
+                return hours * 60 + minutes + seconds / 60;
+            }
+            return value;
+        }
+
+        function sortAlertTable(column) {
+            if (!Number.isInteger(column) || column < 0 || column >= alertSortLabels.length) return;
+            const tbody = document.getElementById('alert-station-tbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.rows);
+            rows.forEach(row => {
+                if (!alertOriginalOrder.has(row)) alertOriginalOrder.set(row, alertNextOrder++);
+            });
+            if (alertSortColumn !== column) {
+                alertSortColumn = column;
+                alertSortDirection = 'asc';
+            } else if (alertSortDirection === 'asc') {
+                alertSortDirection = 'desc';
+            } else {
+                alertSortColumn = null;
+                alertSortDirection = 'asc';
+            }
+            rows.sort((a, b) => {
+                const original = alertOriginalOrder.get(a) - alertOriginalOrder.get(b);
+                if (alertSortColumn === null) return original;
+                const left = alertSortValue(a, alertSortColumn);
+                const right = alertSortValue(b, alertSortColumn);
+                const result = typeof left === 'number' ? left - right : left.localeCompare(right, 'zh-Hant', { numeric: true });
+                return (alertSortDirection === 'asc' ? result : -result) || original;
+            });
+            rows.forEach(row => tbody.appendChild(row));
+            document.querySelectorAll('[data-alert-sort]').forEach(header => {
+                const active = Number(header.dataset.alertSort) === alertSortColumn;
+                header.setAttribute('aria-sort', active ? (alertSortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+                header.querySelector('[data-sort-icon]').textContent = active ? (alertSortDirection === 'asc' ? '↑' : '↓') : '↕';
+            });
+            document.getElementById('alert-sort-status').textContent = (alertSortColumn === null ? '預設排序' : alertSortLabels[alertSortColumn] + '（' + (alertSortDirection === 'asc' ? '升冪 ↑' : '降冪 ↓') + '）') + ' · 共 ' + rows.length + ' 筆告警 · 連續點選同一欄位：升冪 → 降冪 → 預設。實質水位依百分比排序。';
+        }
+
+        function selectStationForPanel(stationId) {
+            const station = stationData.find(s => s.id === stationId);
+            if (!station) return;
+            currentSelectedStationId = stationId;
+
+            document.getElementById('panel-station-type-tag').innerText = station.pattern;
+            document.getElementById('panel-station-name').innerText = station.name;
+            document.getElementById('panel-station-sub').innerText = `${station.district} · 共 ${station.total} 個車柱 · 預計失衡 —`;
+            renderStationForecast(station);
+        }
+
+        function stationBikesForOffset(station, offsetMinutes) {
+            // 由 appIntegration.js 以本次模型回放資料覆寫；此後備讀 timeline，資料不足回 null（不臆造）。
+            const offsetSlots = Math.round(offsetMinutes / 30);
+            const slot = (currentTimelineIndex + offsetSlots) % overviewTimelineSlots.length;
+            const row = station.timeline?.[slot];
+            if (!row || row[0] === null || row[0] === undefined) return null;
+            const value = offsetMinutes === 60 ? row[2] : offsetMinutes === 30 ? row[1] : row[0];
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function renderStationForecast(station) {
+            const values = [0, 30, 60].map(offset => stationBikesForOffset(station, offset));
+            document.getElementById('panel-bikes-now').innerText = values[0];
+            document.getElementById('panel-bikes-30').innerText = values[1];
+            document.getElementById('panel-bikes-60').innerText = values[2];
+
+            const selectedHour = Math.floor(currentTimelineIndex / 2);
+            const demandPeriod = selectedHour >= 6 && selectedHour < 10
+                ? '早尖峰通勤需求'
+                : selectedHour >= 16 && selectedHour < 20
+                    ? '晚尖峰借還車潮'
+                    : '一般時段借還需求';
+            const explainChange = (minutes, value) => {
+                const delta = value - values[0];
+                const ratio = value / Math.max(1, station.total);
+                let message;
+                if (delta <= -2) message = `${demandPeriod}增加，預估減少 ${Math.abs(delta)} 輛`;
+                else if (delta >= 2) message = `${demandPeriod}帶動還車回流，預估增加 ${delta} 輛`;
+                else message = '借還量接近平衡，預估車數變化不大';
+                if (value <= 3 || ratio < 0.15) message += '，有缺車警示';
+                else if (ratio > 0.85) message += '，有滿站警示';
+                return `<div><span class="font-bold text-amber-700">+${minutes} 分：</span>${message}。</div>`;
+            };
+            document.getElementById('panel-forecast-explanation').innerHTML =
+                explainChange(30, values[1]) + explainChange(60, values[2]);
+
+            const lowest = Math.min(...values);
+            const highest = Math.max(...values);
+            const title = document.getElementById('panel-recommendation-title');
+            const recommendation = document.getElementById('gov-decision-recommendation');
+            if (lowest <= 3 || lowest / Math.max(1, station.total) < 0.15) {
+                title.innerText = '建議介入：安排補車';
+                recommendation.innerText = '未來一小時可借車輛偏低，建議與鄰近供需互補站點配對。';
+            } else if (highest / Math.max(1, station.total) > 0.85) {
+                title.innerText = '建議介入：安排移車';
+                recommendation.innerText = '未來一小時接近滿站，建議預留還車空間並安排移車。';
+            } else {
+                title.innerText = '建議介入：持續監測';
+                recommendation.innerText = '目前供需穩定，建議持續觀察後續變化。';
+            }
+
+            const canvas = document.getElementById('chart-forecast-bikes');
+            if (!canvas) return;
+            if (chartForecastBikes) chartForecastBikes.destroy();
+            chartForecastBikes = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: ['現在', '+30 分', '+60 分'],
+                    datasets: [{
+                        data: values,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 5,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#dbeafe',
+                        pointBorderColor: '#2563eb',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(148, 163, 184, 0.25)' }, ticks: { color: '#64748b', font: { size: 10, weight: 'bold' } } },
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: station.total,
+                            max: Math.max(station.total, ...values),
+                            title: { display: true, text: '可借車輛', color: '#64748b', font: { size: 10 } },
+                            grid: { color: 'rgba(148, 163, 184, 0.25)' },
+                            ticks: { precision: 0, color: '#64748b', font: { size: 9 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function addReliableBaseMap(targetMap) {
+            const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri and contributors'
+            });
+            const fallback = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                subdomains: 'abc',
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors, Tiles by HOT'
+            });
+            let failures = 0;
+            let switched = false;
+            esri.on('tileerror', () => {
+                failures += 1;
+                if (!switched && failures >= 3) {
+                    switched = true;
+                    targetMap.removeLayer(esri);
+                    fallback.addTo(targetMap);
+                }
+            });
+            esri.addTo(targetMap);
+            return esri;
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([25.0125, 121.4650], 12);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            addReliableBaseMap(map);
+
+            markersGroup = L.markerClusterGroup({
+                maxClusterRadius: 45,
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                zoomToBoundsOnClick: true
+            }).addTo(map);
+
+            renderMarkers();
+        }
+
+        function renderMarkers() {
+            if (!markersGroup) return;
+            markersGroup.clearLayers();
+
+            stationData.forEach(station => {
+                if (currentDistrict !== 'ALL' && station.district !== currentDistrict) return;
+                if (currentPatternFilter !== 'ALL' && station.pattern !== currentPatternFilter) return;
+
+                const bikes = stationBikesAtSelectedTime(station);
+                const faultCount = station.faultCount || 0;
+                const effectiveBikes = Math.max(0, bikes - faultCount);
+                const ratio = effectiveBikes / (station.total || 1);
+
+                let markerColor = '#10b981';
+                let animationClass = '';
+
+                if (effectiveBikes <= 3 || ratio < 0.15) {
+                    markerColor = '#ef4444';
+                    animationClass = 'marker-alert-empty';
+                } else if (ratio > 0.85) {
+                    markerColor = '#f59e0b';
+                    animationClass = 'marker-alert-full';
+                }
+
+                if (currentFilter === 'empty' && !(effectiveBikes <= 3 || ratio < 0.15)) return;
+                if (currentFilter === 'full' && !(ratio > 0.85)) return;
+                if (currentFilter === 'fault' && faultCount === 0) return;
+
+                const faultBadge = faultCount > 0 ? 
+                    `<span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 text-white rounded-full text-[8px] flex items-center justify-center font-bold">🔧</span>` : '';
+
+                const customIcon = L.divIcon({
+                    className: 'custom-leaflet-marker',
+                    html: `
+                        <div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-white font-bold text-xs shadow-md ${animationClass}" style="border: 2.5px solid ${markerColor}">
+                            <span style="color: ${markerColor}">${effectiveBikes}</span>
+                            ${faultBadge}
+                        </div>
+                    `,
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                });
+
+                const marker = L.marker([station.lat, station.lng], { icon: customIcon });
+                marker.bindPopup(`
+                    <div class="p-1 font-sans text-slate-800">
+                        <div class="font-bold text-xs">${station.name}</div>
+                        <div class="text-[10px] text-blue-600 font-bold">${station.pattern}</div>
+                        <div class="text-xs bg-slate-50 p-1.5 rounded border mt-1">
+                            ${currentForecastMinutes === 0 ? '可借車' : `+${currentForecastMinutes} 分鐘預測`}: <strong>${effectiveBikes} / ${station.total}</strong>
+                        </div>
+                        <button onclick="selectStationForPanel('${station.id}')" class="mt-2 w-full py-1 bg-blue-600 text-white rounded text-[10px] font-bold">查看詳細時段</button>
+                    </div>
+                `);
+                marker.on('click', () => selectStationForPanel(station.id));
+                markersGroup.addLayer(marker);
+            });
+            updateOverviewRiskCounts();
+        }
+
+        function filterByKMeansPattern(pattern) {
+            if (activeFilterPage === 'patterns') {
+                tablePatternFilter = pattern;
+                handleStationSearch(patternSearchQuery);
+            } else if (activeFilterPage === 'gis') {
+                gisPatternFilter = pattern;
+                renderGisPatterns();
+            } else if (activeFilterPage === 'overview') {
+                currentPatternFilter = pattern;
+                document.getElementById('current-pattern-badge').innerText = pattern === 'ALL' ? '全區 ' + stationData.length + ' 站' : '形態：' + pattern;
+                renderMarkers();
+            }
+        }
+
+        function switchTab(tabId) {
+            activeFilterPage = tabId;
+            document.getElementById('header-pattern-select').value = tabId === 'patterns' ? tablePatternFilter : tabId === 'gis' ? gisPatternFilter : currentPatternFilter;
+            const patternFilter = document.getElementById('page-pattern-filter');
+            if (patternFilter) patternFilter.style.display = ['overview', 'patterns', 'gis'].includes(tabId) ? '' : 'none';
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('aside nav button').forEach(btn => {
+                btn.className = "w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition font-medium";
+            });
+
+            const activeTab = document.getElementById(`tab-${tabId}`);
+            if (activeTab) activeTab.classList.add('active');
+
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.className = "w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-xl bg-blue-600 text-white font-semibold shadow-md transition";
+            }
+
+            const titleMap = {
+                'overview': '營運總覽與供需預測',
+                'patterns': '站點供需型態分析',
+                'foolproof': '調度安全檢核',
+                'relay': '友愛接力任務管理',
+                'faults': '調度日誌',
+                'trucks': '調度車路線規劃',
+                'alerts': '缺車/滿站風險告警'
+            };
+            const breadcrumb = document.getElementById('page-title-breadcrumb');
+            if (breadcrumb) breadcrumb.innerText = titleMap[tabId] || '智慧交通營運監理中心';
+
+            if (tabId === 'trucks') {
+                if (!mapTrucks) {
+                    initTrucksMap();
+                } else {
+                    window.rebuildDispatchCandidate?.();
+                    setTimeout(() => {
+                        mapTrucks.invalidateSize();
+                        loadTruckRoadRoute();
+                    }, 150);
+                }
+            }
+            if (tabId === 'overview' && map) {
+                setTimeout(() => map.invalidateSize(), 150);
+            }
+            if (tabId === 'patterns') {
+                // 進入此頁才重繪表格並啟動整日 +30 MME 預測彙整（限並行、快取、顯示進度）。
+                handleStationSearch(patternSearchQuery);
+            }
+        }
+
+        function handleDistrictChange(district) {
+            currentDistrict = district;
+            const districtCoords = {
+                'ALL': [25.0125, 121.4650],
+                '板橋區': [25.0125, 121.4650],
+                '五股區': [25.0682, 121.4552],
+                '三重區': [25.0558, 121.4842],
+                '新莊區': [25.0340, 121.4330],
+                '中和區': [24.9950, 121.5000],
+                '新店區': [24.9700, 121.5400],
+                '淡水區': [25.1700, 121.4400],
+                '土城區': [24.9700, 121.4450],
+                '樹林區': [24.9800, 121.4150],
+                '林口區': [25.0750, 121.3700]
+            };
+            const coords = districtCoords[district] || [25.0125, 121.4650];
+            const zoomLevel = district === 'ALL' ? 12 : 14;
+            map.flyTo(coords, zoomLevel);
+            renderMarkers();
+        }
+
+        function filterStatus(status) {
+            currentFilter = status;
+            document.querySelectorAll('[id^="filter-btn-"]').forEach(btn => {
+                btn.className = "px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition flex items-center space-x-1";
+            });
+            document.getElementById(`filter-btn-${status}`).className = "px-2.5 py-1 rounded-md bg-white text-slate-800 font-semibold shadow-sm transition flex items-center space-x-1";
+            // 「有待修車」：目前無真實維修預測資料 → 顯示說明列（不冒充、不把 0 站說成「預測沒有待修車」）。
+            const faultNote = document.getElementById('fault-filter-note');
+            if (faultNote) faultNote.classList.toggle('hidden', status !== 'fault');
+            renderMarkers();
+            if (typeof window.syncPanelToVisible === 'function') window.syncPanelToVisible();   // 右側詳情與地圖篩選同步
+        }
+
+        // 需求 1 對應：僅 0, 30, 60 分鐘預估對應陣列索引 (0, 2, 4)
+        function updatePredictiveTime(val) {
+            const rawVal = parseInt(val);
+            currentForecastMinutes = rawVal;
+            if (rawVal === 0) {
+                currentTimeStepIndex = 0;
+                document.getElementById('slider-label').innerText = `基準時點 ${timelineTimeAt(0)}`;
+            } else if (rawVal <= 30) {
+                currentTimeStepIndex = 2;
+                document.getElementById('slider-label').innerText = `+30 分鐘預估 ${timelineTimeAt(30)}`;
+            } else {
+                currentTimeStepIndex = 4;
+                document.getElementById('slider-label').innerText = `+60 分鐘預估 ${timelineTimeAt(60)}`;
+            }
+            renderMarkers();
+            if (currentSelectedStationId) {
+                const selectedStation = stationData.find(station => station.id === currentSelectedStationId);
+                if (selectedStation) renderStationForecast(selectedStation);
+            }
+        }
+
+        // 需求 4 互動邏輯
+        function selectSmsTarget(district, stationName, status) {
+            document.getElementById('sms-target-station').value = `${stationName} (${district})`;
+            document.getElementById('sms-content-preview').innerText = 
+                `[新北交通局] 親愛的市民，您位於「${district}」附近的「${stationName}」即將面臨${status}。邀請您響應友愛接力，系統已自動派發 5 元騎乘券，助您通勤順暢！`;
+            showNotification(`已選取監控站點：${stationName}`);
+        }
+
+        function triggerSmsDispatch() {
+            showNotification('目前僅能預覽，尚未串接簡訊 API。');
+        }
+
+        // 需求 2 互動邏輯 (Uber風司機端)
+        let isOnline = true;
+        function toggleDriverStatus() {
+            isOnline = !isOnline;
+            const badge = document.getElementById('driver-status-badge');
+            const btn = document.getElementById('driver-toggle-btn');
+            if (isOnline) {
+                badge.className = "px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-bold flex items-center space-x-1.5";
+                badge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span><span>上工接單中 (Online)</span>`;
+                btn.innerText = "暫停收單";
+                showNotification("已切換為上工狀態，正接收鄰近調度派單...");
+            } else {
+                badge.className = "px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 border border-slate-700 text-xs font-bold flex items-center space-x-1.5";
+                badge.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span><span>收工休息中 (Offline)</span>`;
+                btn.innerText = "開始接單";
+                showNotification("已暫停接收新派單。");
+            }
+        }
+
+        function openDispatchModal(id, name, maxSafe) {
+            document.getElementById('modal-target-station').innerText = `目標站點：${name}`;
+            showModal('dispatch-modal');
+        }
+
+        function showModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        
+        function confirmDispatch() {
+            closeModal('dispatch-modal');
+            showNotification('前端確認完成；尚未串接工單資料庫。');
+        }
+
+        function dispatchRepairTruck() {
+            showNotification('尚未串接故障車與維修工單 API。');
+        }
+
+        function resetChecklist() {
+            showNotification('複檢清單狀態已重設');
+        }
+
+        function triggerSimulatedInterception() {
+            showNotification('🚨 防呆系統成功攔截超額派車，已自動強制鎖定！');
+        }
+
+        function showNotification(msg) {
+            const toast = document.createElement('div');
+            toast.className = "fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl z-[2000] text-xs flex items-center space-x-2 font-medium";
+            toast.innerHTML = `<i class="fa-solid fa-circle-check text-cyan-400"></i><span>${msg}</span>`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function renderGisPatterns() {
+            if (!gisPatternLayer) return;
+            gisPatternLayer.clearLayers();
+            const stations = stationData.filter(s => gisPatternFilter === 'ALL' || s.pattern === gisPatternFilter);
+            stations.forEach(s => {
+                L.circle([s.lat, s.lng], { color: '#0284c7', fillColor: '#38bdf8', fillOpacity: 0.5, radius: 400 }).addTo(gisPatternLayer);
+            });
+        }
+        function initHotspotsMap() {
+            mapHotspots = L.map('map-hotspots', { zoomControl: false }).setView([25.0125, 121.4650], 13);
+            L.control.zoom({ position: 'topright' }).addTo(mapHotspots);
+            addReliableBaseMap(mapHotspots);
+            gisPatternLayer = L.layerGroup().addTo(mapHotspots);
+            renderGisPatterns();
+        }
+
+        // appIntegration.js replaces these placeholders with current model candidates.
+        const dispatchRoutePlan = { stops: [], reason: '正在計算自動派遣', selectedAId: null, bCandidates: [], desiredStopCount: 4, autoMode: true, esg: null };
+
+        let truckUserOrigin = [25.01245, 121.4642];
+        let truckOriginLabel = '新北市政府（預設）';
+        const dispatchRadiusKm = 1;
+        let truckLocationRequest = 0;
+        window.getDispatchOrigin = () => truckUserOrigin;
+        window.getDispatchRadiusKm = () => dispatchRadiusKm;
+        function isPlausibleTaipeiLocation(lat, lng) {
+            return lat >= 24.75 && lat <= 25.35 && lng >= 121.15 && lng <= 122.10;
+        }
+        function applyTruckOrigin(lat, lng, message, label = '我的目前位置') {
+            truckUserOrigin = [lat, lng];
+            truckOriginLabel = label;
+            document.getElementById('route-location-status').textContent = message;
+            updateDispatchRouteLink();
+            window.rebuildDispatchCandidate?.();
+            if (mapTrucks) loadTruckRoadRoute();
+        }
+        function buildDispatchRouteUrl() {
+            const stops = dispatchRoutePlan.stops;
+            if (!stops.length) return null;
+            const url = new URL('https://www.google.com/maps/dir/');
+            url.searchParams.set('api', '1');
+            if (truckUserOrigin) url.searchParams.set('origin', truckUserOrigin.join(','));
+            url.searchParams.set('destination', stops[stops.length - 1].query);
+            if (stops.length > 1) url.searchParams.set('waypoints', stops.slice(0, -1).map(stop => stop.query).join('|'));
+            url.searchParams.set('travelmode', 'driving');
+            url.searchParams.set('dir_action', 'navigate');
+            return url.toString();
+        }
+        function updateDispatchRouteLink() {
+            const link = document.getElementById('dispatch-route-link');
+            const url = buildDispatchRouteUrl();
+            document.getElementById('dispatch-route-error').textContent = url ? '' : '尚未設定任務站點。';
+            if (url) link.href = url;
+            else link.removeAttribute('href');
+            link.setAttribute('aria-disabled', String(!url));
+            return Boolean(url);
+        }
+        function locateTruckOrigin() {
+            const request = ++truckLocationRequest;
+            const status = document.getElementById('route-location-status');
+            const failed = error => {
+                if (request !== truckLocationRequest) return;
+                if (!window.isSecureContext) {
+                    status.textContent = '此網址不是 HTTPS，瀏覽器禁止定位；請改用 HTTPS 或 localhost。';
+                } else if (error.code === 1) {
+                    status.textContent = '定位權限遭拒；請在網址列允許位置後重新定位。';
+                } else if (error.code === 3) {
+                    status.textContent = '現場定位逾時；請確認 Windows 定位已開啟後重試。';
+                } else {
+                    status.textContent = '裝置暫時無法定位；請確認 Windows 定位已開啟後重試。';
+                }
+                document.getElementById('truck-route-status').textContent = '重新定位失敗，路線仍沿用原起點。';
+            };
+            if (!navigator.geolocation) { failed({code: 2}); return; }
+            status.textContent = '正在取得目前位置…';
+            document.getElementById('truck-route-status').textContent = '等待定位完成…';
+            navigator.geolocation.getCurrentPosition(position => {
+                if (request !== truckLocationRequest) return;
+                if (!isPlausibleTaipeiLocation(position.coords.latitude, position.coords.longitude)) {
+                    status.textContent = '瀏覽器回傳的位置不在雙北範圍，已拒絕；目前仍使用' + truckOriginLabel + '。';
+                    return;
+                }
+                applyTruckOrigin(
+                    position.coords.latitude,
+                    position.coords.longitude,
+                    '已取得目前位置（精確度約 ' + Math.round(position.coords.accuracy) + ' 公尺）',
+                    '我的目前位置'
+                );
+            }, failed, { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 });
+        }
+
+        function validateDispatchRoute() {
+            return updateDispatchRouteLink();
+        }
+
+        function dispatchRouteSummary() {
+            if (!dispatchRoutePlan.stops.length) return `${truckOriginLabel} · ${dispatchRoutePlan.reason || '請先選擇 A 站'}`;
+            if (dispatchRoutePlan.stops.length === 1) return `${truckOriginLabel} → ${dispatchRoutePlan.stops[0].name}（僅 1 個自動候選站）`;
+            return [truckOriginLabel, ...dispatchRoutePlan.stops.map(stop => stop.name)].join(' → ') + '（結束）';
+        }
+        function refreshRouteAfterStopEdit() {
+            renderDispatchRoutePlan();
+            if (!mapTrucks) return;
+            if (dispatchRoutePlan.stops.length && truckUserOrigin) loadTruckRoadRoute();
+            else {
+                invalidateTruckRoadRoute();
+                document.getElementById('truck-route-status').textContent = '目前沒有調度站點，請回到總覽重新選擇候選任務。';
+            }
+        }
+        function removeDispatchStop(index) {
+            dispatchRoutePlan.stops.splice(index, 1);
+            if (index === 0 || !dispatchRoutePlan.stops.length) {
+                dispatchRoutePlan.stops.splice(0);
+                dispatchRoutePlan.selectedAId = null;
+                dispatchRoutePlan.bCandidates = [];
+                dispatchRoutePlan.desiredStopCount = 2;
+                dispatchRoutePlan.reason = '已移除 A 站；請回營運總覽重新選擇';
+            } else {
+                dispatchRoutePlan.desiredStopCount = Math.max(2, dispatchRoutePlan.desiredStopCount - 1);
+                dispatchRoutePlan.reason = '已移除站點，可重新選擇';
+            }
+            dispatchRoutePlan.stops.forEach((stop, stopIndex) => stop.label = String.fromCharCode(65 + stopIndex));
+            refreshRouteAfterStopEdit();
+            showNotification('已從本次建議路線移除站點');
+        }
+        function selectDispatchRouteStation(index, stationId) {
+            if (!stationId) {
+                if (dispatchRoutePlan.stops.length > index) dispatchRoutePlan.stops.splice(index);
+                dispatchRoutePlan.reason = `請從下拉選單選擇 ${String.fromCharCode(65 + index)} 站`;
+                refreshRouteAfterStopEdit();
+                return;
+            }
+            const station = stationData.find(item => item.id === stationId);
+            const candidate = dispatchRoutePlan.bCandidates.find(item => item.stationId === stationId);
+            if (!station || !candidate) return;
+            const label = String.fromCharCode(65 + index);
+            const stop = {
+                label, stationId: station.id, name: station.name, district: station.district,
+                query: `${station.lat},${station.lng}`,
+                task: `${candidate.kind === 'full' ? '滿車' : '缺車'}警示 · 距 A 站 ${candidate.distanceKm.toFixed(2)} 公里`
+            };
+            if (dispatchRoutePlan.stops.length > index) dispatchRoutePlan.stops[index] = stop;
+            else dispatchRoutePlan.stops.push(stop);
+            dispatchRoutePlan.reason = '';
+            refreshRouteAfterStopEdit();
+            showNotification(`已選擇 ${label} 站並重新計算路線`);
+        }
+        function addDispatchStop() {
+            if (!dispatchRoutePlan.stops.length) {
+                showNotification('請先在營運總覽選擇 A 站');
+                return;
+            }
+            if (dispatchRoutePlan.stops.length < dispatchRoutePlan.desiredStopCount) {
+                showNotification(`請先選擇 ${String.fromCharCode(64 + dispatchRoutePlan.desiredStopCount)} 站`);
+                return;
+            }
+            if (dispatchRoutePlan.desiredStopCount >= 4) {
+                showNotification('目前最多安排 A、B、C、D 共 4 站');
+                return;
+            }
+            dispatchRoutePlan.desiredStopCount += 1;
+            dispatchRoutePlan.reason = `請選擇 ${String.fromCharCode(64 + dispatchRoutePlan.desiredStopCount)} 站`;
+            renderDispatchRoutePlan();
+        }
+        function renderDispatchRoutePlan() {
+            document.getElementById('dispatch-route-summary').textContent = dispatchRouteSummary();
+            document.getElementById('dispatch-route-endpoint').textContent = dispatchRoutePlan.stops.length
+                ? '目前結束位置：' + dispatchRoutePlan.stops.at(-1).name
+                : '結束位置：尚無自動候選站';
+            const list = document.getElementById('dispatch-route-stops');
+            list.replaceChildren();
+            if (!dispatchRoutePlan.stops.length) {
+                const empty = document.createElement('li');
+                empty.className = 'rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500';
+                empty.textContent = dispatchRoutePlan.reason || '目前沒有建議調度任務；可切換時段或擴大接單範圍。';
+                list.appendChild(empty);
+            }
+            dispatchRoutePlan.stops.forEach((stop, index) => {
+                const item = document.createElement('li');
+                const kindClasses = stop.kind === 'shortage'
+                    ? 'border-red-200 bg-red-50/60'
+                    : stop.kind === 'full' ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200 bg-slate-50';
+                item.className = `rounded-xl border ${kindClasses} p-3 space-y-2`;
+                const header = document.createElement('div');
+                header.className = 'flex items-start justify-between gap-2';
+                const task = document.createElement('span');
+                task.className = 'text-xs font-bold text-slate-700';
+                task.textContent = `${stop.label || String.fromCharCode(65 + index)} · ${stop.task}`;
+                const score = document.createElement('span');
+                score.className = 'shrink-0 rounded-full bg-white border px-2 py-1 text-[10px] font-black text-blue-700';
+                score.textContent = `優先 ${Number(stop.priorityScore || 0).toFixed(0)}`;
+                header.append(task, score);
+                const stationName = document.createElement('div');
+                stationName.className = 'font-bold text-slate-800';
+                stationName.textContent = stop.name;
+                const reason = document.createElement('div');
+                reason.className = 'text-[11px] text-slate-500';
+                reason.textContent = stop.priorityReason || '依目前風險自動納入';
+                item.append(header, stationName, reason);
+                list.appendChild(item);
+            });
+            updateDispatchRouteLink();
+            updateDispatchEsgEstimate();
+        }
+        const dispatchCo2KgPerKm = 0.25;
+        function straightDistanceKm(a, b) {
+            const rad = value => value * Math.PI / 180;
+            const dLat = rad(b[0] - a[0]);
+            const dLng = rad(b[1] - a[1]);
+            const value = Math.sin(dLat / 2) ** 2
+                + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+            return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+        }
+        function updateDispatchEsgEstimate(actualRouteKm = null) {
+            const values = ['esg-route-km', 'esg-baseline-km', 'esg-saved-km', 'esg-co2-kg'];
+            if (!truckUserOrigin || dispatchRoutePlan.stops.length < 2) {
+                dispatchRoutePlan.esg = null;
+                values.forEach(id => { const element = document.getElementById(id); if (element) element.textContent = '—'; });
+                return;
+            }
+            const stationPoints = dispatchRoutePlan.stops.map(stop => resolveTruckLocation(stop.name));
+            if (stationPoints.some(point => !point)) return;
+            let optimizedStraightKm = straightDistanceKm(truckUserOrigin, stationPoints[0]);
+            for (let index = 1; index < stationPoints.length; index += 1) {
+                optimizedStraightKm += straightDistanceKm(stationPoints[index - 1], stationPoints[index]);
+            }
+            const separateStraightKm = stationPoints.reduce(
+                (sum, point) => sum + straightDistanceKm(truckUserOrigin, point), 0
+            );
+            const routeKm = Number.isFinite(actualRouteKm) ? actualRouteKm : optimizedStraightKm;
+            const roadScale = optimizedStraightKm > 0 ? routeKm / optimizedStraightKm : 1;
+            const baselineKm = separateStraightKm * roadScale;
+            const savedKm = Math.max(0, baselineKm - routeKm);
+            const co2Kg = savedKm * dispatchCo2KgPerKm;
+            dispatchRoutePlan.esg = { routeKm, baselineKm, savedKm, co2Kg, source: Number.isFinite(actualRouteKm) ? '道路路線估算' : '直線距離預估' };
+            document.getElementById('esg-route-km').textContent = routeKm.toFixed(2);
+            document.getElementById('esg-baseline-km').textContent = baselineKm.toFixed(2);
+            document.getElementById('esg-saved-km').textContent = savedKm.toFixed(2);
+            document.getElementById('esg-co2-kg').textContent = co2Kg.toFixed(3);
+            document.getElementById('esg-estimate-note').textContent =
+                `情境估算（${dispatchRoutePlan.esg.source}）：比較各站分開派車與合併成一趟；暫採 ${dispatchCo2KgPerKm} kg CO₂e／公里，非正式碳盤查結果。`;
+        }
+        const dispatchLogStorageKey = 'youbike-dispatch-log-v1';
+        let dispatchLogsMemory = [];
+        function readDispatchLogs() {
+            try {
+                return JSON.parse(localStorage.getItem(dispatchLogStorageKey) || '[]');
+            } catch (_) {
+                return dispatchLogsMemory;
+            }
+        }
+        function writeDispatchLogs(logs) {
+            dispatchLogsMemory = logs;
+            try { localStorage.setItem(dispatchLogStorageKey, JSON.stringify(logs)); } catch (_) {}
+        }
+        function renderDispatchLogs() {
+            const body = document.getElementById('dispatch-log-body');
+            if (!body) return;
+            const logs = readDispatchLogs();
+            body.replaceChildren();
+            if (!logs.length) {
+                const row = body.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 7;
+                cell.className = 'p-6 text-center font-sans text-slate-500';
+                cell.textContent = '尚無調度紀錄';
+            } else {
+                logs.forEach(log => {
+                    const row = body.insertRow();
+                    [log.time, log.operator, log.aStation, log.bStation, log.note].forEach(value => {
+                        const cell = row.insertCell();
+                        cell.className = 'p-3';
+                        cell.textContent = value || '—';
+                    });
+                    const esgCell = row.insertCell();
+                    esgCell.className = 'p-3 text-emerald-700 font-bold';
+                    esgCell.textContent = Number.isFinite(log.co2Kg)
+                        ? `省 ${Number(log.savedKm || 0).toFixed(2)} km／${log.co2Kg.toFixed(3)} kg CO₂e`
+                        : '舊紀錄無估算';
+                    const actionCell = row.insertCell();
+                    actionCell.className = 'p-3';
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'px-2.5 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 font-bold';
+                    remove.textContent = '刪除';
+                    remove.addEventListener('click', () => deleteDispatchLog(log.id));
+                    actionCell.appendChild(remove);
+                });
+            }
+            const badge = document.getElementById('sidebar-log-count');
+            if (badge) badge.textContent = String(logs.length);
+            const kpi = document.getElementById('kpi-log-count');
+            if (kpi) kpi.innerHTML = `${logs.length} <span class="text-xs font-normal text-slate-500">筆</span>`;
+            const totalSavedKm = logs.reduce((sum, log) => sum + (Number(log.savedKm) || 0), 0);
+            const totalCo2Kg = logs.reduce((sum, log) => sum + (Number(log.co2Kg) || 0), 0);
+            const savedElement = document.getElementById('dispatch-log-saved-km');
+            const co2Element = document.getElementById('dispatch-log-co2');
+            if (savedElement) savedElement.textContent = `${totalSavedKm.toFixed(2)} km`;
+            if (co2Element) co2Element.textContent = `${totalCo2Kg.toFixed(3)} kg CO₂e`;
+        }
+        function deleteDispatchLog(id) {
+            const logs = readDispatchLogs().filter(log => log.id !== id);
+            writeDispatchLogs(logs);
+            renderDispatchLogs();
+            showNotification('已刪除這筆調度日誌');
+        }
+        function completeDispatchAndLog() {
+            if (!dispatchRoutePlan.stops[0]) {
+                showNotification('目前沒有可執行的自動調度任務');
+                return;
+            }
+            const operator = document.getElementById('dispatch-operator').value.trim() || '未署名';
+            const note = document.getElementById('dispatch-note').value.trim() || '調度完成';
+            if (!dispatchRoutePlan.esg) updateDispatchEsgEstimate();
+            const esg = dispatchRoutePlan.esg;
+            const logs = readDispatchLogs();
+            logs.unshift({
+                id: Date.now(), time: new Date().toLocaleString('zh-TW', { hour12: false }), operator,
+                aStation: dispatchRoutePlan.stops[0].name,
+                bStation: dispatchRoutePlan.stops.slice(1).map(stop => stop.name).join(' → ') || '無其他站點',
+                note,
+                routeKm: esg?.routeKm ?? null,
+                baselineKm: esg?.baselineKm ?? null,
+                savedKm: esg?.savedKm ?? null,
+                co2Kg: esg?.co2Kg ?? null
+            });
+            writeDispatchLogs(logs.slice(0, 100));
+            document.getElementById('dispatch-note').value = '';
+            renderDispatchLogs();
+            showNotification('調度完成，已寫入調度日誌');
+            switchTab('faults');
+        }
+        window.addEventListener('DOMContentLoaded', () => {
+            renderDispatchRoutePlan();
+            renderDispatchLogs();
+        });
+
+        let truckRoadLayer, truckPointLayer, truckRouteController;
+        function invalidateTruckRoadRoute() {
+            if (truckRouteController) truckRouteController.abort();
+            truckRouteController = null;
+            if (truckRoadLayer) truckRoadLayer.clearLayers();
+            if (truckPointLayer) truckPointLayer.clearLayers();
+            document.getElementById('truck-route-status').textContent = '位置已變更，請按更新地圖路線。';
+        }
+        function resolveTruckLocation(value) {
+            const text = value.trim();
+            if (text === '新北市政府，新北市板橋區') return [25.01245, 121.4642];
+            const match = text.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+            if (match) {
+                const lat = Number(match[1]), lng = Number(match[2]);
+                if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return [lat, lng];
+            }
+            const station = stationData.find(s => s.name === text || s.district + ' · ' + s.name === text);
+            return station ? [station.lat, station.lng] : null;
+        }
+        async function loadTruckRoadRoute() {
+            if (!mapTrucks) return;
+            invalidateTruckRoadRoute();
+            const status = document.getElementById('truck-route-status');
+            if (!truckUserOrigin) {
+                status.textContent = '請先允許定位，或按重新定位取得目前位置。';
+                return;
+            }
+            const points = [truckUserOrigin, ...dispatchRoutePlan.stops.map(s => resolveTruckLocation(s.name))];
+            if (points.some(p => !p)) { status.textContent = '任務站點缺少座標，無法計算路線。'; return; }
+            const labels = [truckOriginLabel + '（開始）', ...dispatchRoutePlan.stops.map((s, i) => s.name + (i === dispatchRoutePlan.stops.length - 1 ? '（結束）' : ''))];
+            points.forEach((point, i) => {
+                const label = document.createElement('span'); label.textContent = labels[i];
+                L.marker(point).addTo(truckPointLayer).bindTooltip(label, { permanent: true, direction: i === points.length - 1 ? 'bottom' : 'top' });
+            });
+            mapTrucks.fitBounds(points, { padding: [55, 55], maxZoom: 15 });
+            status.textContent = '正在計算道路路線…';
+            const controller = new AbortController(); truckRouteController = controller;
+            const timeout = setTimeout(() => controller.abort(), 20000);
+            try {
+                const coords = points.map(p => p[1] + ',' + p[0]).join(';');
+                const response = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson&steps=false', { signal: controller.signal });
+                if (!response.ok) throw new Error('route service');
+                const data = await response.json();
+                if (truckRouteController !== controller) return;
+                if (data.code !== 'Ok' || !data.routes?.[0]?.geometry?.coordinates?.length) throw new Error('no route');
+                const route = data.routes[0];
+                L.geoJSON(route.geometry, { style: { color: '#ffffff', weight: 9 } }).addTo(truckRoadLayer);
+                L.geoJSON(route.geometry, { style: { color: '#2563eb', weight: 5 } }).addTo(truckRoadLayer);
+                mapTrucks.fitBounds(truckRoadLayer.getBounds(), { padding: [55, 55] });
+                updateDispatchEsgEstimate(route.distance / 1000);
+                status.textContent = dispatchRouteSummary() + ' · ' + (route.distance / 1000).toFixed(1) + ' 公里 · 預估行車 ' + Math.ceil(route.duration / 60) + ' 分鐘（不含停靠與即時路況）';
+            } catch (error) {
+                if (truckRouteController === controller) {
+                    L.polyline(points, { color: '#2563eb', weight: 4, dashArray: '8, 8' }).addTo(truckRoadLayer);
+                    mapTrucks.fitBounds(points, { padding: [55, 55], maxZoom: 15 });
+                    updateDispatchEsgEstimate();
+                    status.textContent = '道路服務暫時無法連線，目前顯示直線示意；仍可用 Google Maps 開啟正式路線。';
+                }
+            } finally { clearTimeout(timeout); }
+        }
+        function initTrucksMap() {
+            mapTrucks = L.map('map-trucks', { zoomControl: false }).setView([25.0112, 121.4672], 14);
+            L.control.zoom({ position: 'topright' }).addTo(mapTrucks);
+            addReliableBaseMap(mapTrucks);
+            truckRoadLayer = L.featureGroup().addTo(mapTrucks);
+            truckPointLayer = L.featureGroup().addTo(mapTrucks);
+            applyTruckOrigin(25.01245, 121.4642, '目前使用新北市政府；可按重新定位改用裝置位置。', '新北市政府（預設）');
+        }
+    </script>
+    <script src="appIntegration.js"></script>
+    <script src="liveMode.js"></script>
+    <script src="patternStats.js"></script>
+</body>
+</html>

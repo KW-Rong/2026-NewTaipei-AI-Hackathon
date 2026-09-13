@@ -1,0 +1,140 @@
+{
+  "mode": "replay",
+  "runId": "youbike-20260912-122927",
+  "replayDate": "2026-06-29",
+  "baseTime": "06:30",
+  "dataPeriod": "訓練 2026.01–04 · 驗證 2026.05 · 測試 2026.06",
+  "dataUpdatedAt": "2026-06-29 （歷史回放，非即時）",
+  "slots": [
+    "00:00",
+    "00:30",
+    "01:00",
+    "01:30",
+    "02:00",
+    "02:30",
+    "03:00",
+    "03:30",
+    "04:00",
+    "04:30",
+    "05:00",
+    "05:30",
+    "06:00",
+    "06:30",
+    "07:00",
+    "07:30",
+    "08:00",
+    "08:30",
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+    "14:00",
+    "14:30",
+    "15:00",
+    "15:30",
+    "16:00",
+    "16:30",
+    "17:00",
+    "17:30",
+    "18:00",
+    "18:30",
+    "19:00",
+    "19:30",
+    "20:00",
+    "20:30",
+    "21:00",
+    "21:30",
+    "22:00",
+    "22:30",
+    "23:00",
+    "23:30"
+  ],
+  "stationCount": 1576,
+  "districtCount": 29,
+  "observationCount": 75368,
+  "clusterCounts": {
+    "平穩低波動型": 617,
+    "均衡流動型": 457,
+    "雙尖峰高流動型": 424,
+    "通勤到達型": 41,
+    "未分群新站": 37
+  },
+  "clusterModelCount": 4,
+  "unclusteredStationCount": 37,
+  "unclusteredLabel": "未分群新站",
+  "warningThresholds": {
+    "bike-30": 0.115,
+    "dock-30": 0.105,
+    "bike-60": 0.135,
+    "dock-60": 0.105
+  },
+  "eventDefinition": "真值可借/可還比例 <= 0.10 視為缺車/滿站事件；預測比例 <= 各向門檻即發預警。",
+  "modelKind": "XGBoost 比例回歸 (reg:squarederror)，輸出可借/可還比例，非機率。",
+  "modelVersion": {
+    "runId": "youbike-20260912-122927",
+    "jobs": {
+      "bike-30": "youbike-20260912-122927-bike-30-r2",
+      "dock-30": "youbike-20260912-122927-dock-30-r2",
+      "bike-60": "youbike-20260912-122927-bike-60-r2",
+      "dock-60": "youbike-20260912-122927-dock-60-r2"
+    },
+    "framework": "SageMaker XGBoost 1.7-1"
+  },
+  "testMetrics": {
+    "bike-30": {
+      "MAE_ratio": 0.0571,
+      "RMSE_ratio": 0.0965,
+      "R2": 0.8269,
+      "event_threshold": 0.115,
+      "event_Precision": 0.7581,
+      "event_Recall": 0.814,
+      "event_F1": 0.7851
+    },
+    "dock-30": {
+      "MAE_ratio": 0.054,
+      "RMSE_ratio": 0.0943,
+      "R2": 0.8515,
+      "event_threshold": 0.105,
+      "event_Precision": 0.8379,
+      "event_Recall": 0.7068,
+      "event_F1": 0.7668
+    },
+    "bike-60": {
+      "MAE_ratio": 0.0814,
+      "RMSE_ratio": 0.125,
+      "R2": 0.7095,
+      "event_threshold": 0.135,
+      "event_Precision": 0.6623,
+      "event_Recall": 0.7408,
+      "event_F1": 0.6993
+    },
+    "dock-60": {
+      "MAE_ratio": 0.0764,
+      "RMSE_ratio": 0.1204,
+      "R2": 0.7576,
+      "event_threshold": 0.105,
+      "event_Precision": 0.8679,
+      "event_Recall": 0.6153,
+      "event_F1": 0.7201
+    }
+  },
+  "insufficientSlotCount": 322,
+  "totalSlotCount": 75648,
+  "sourceNote": "資料來源：本次 RUN youbike-20260912-122927 四個 SageMaker XGBoost 訓練模型（-r2）於 2026-06-29 的可追溯回放預測；車數／空位數由模型輸出比例乘以『總車柱數』換算。尚無推論 Endpoint，未提供即時模式。",
+  "liveMode": {
+    "available": false,
+    "reason": "SageMaker 尚未部署推論 Endpoint（list-endpoints 為空）。",
+    "requirements": [
+      "部署四個模型工件為 SageMaker Endpoint（或以一個多模型 Endpoint 承載）",
+      "持續更新的站況來源與至少過去 2 小時（30/60/90/120 分鐘）快照以建立 lag 特徵",
+      "即時站點代號 ↔ 訓練場站鍵對應、營運狀態與資料新鮮度檢查",
+      "後端批次推論並快取整批站點結果，前端只呼叫自家 API"
+    ]
+  }
+}
